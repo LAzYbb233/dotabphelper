@@ -1,0 +1,64 @@
+{
+  "description": "T1 级别赛事比赛数据（2026-01-22 之后）",
+  "start_date": "2026-01-22",
+  "generated_at": "2026-03-24 17:35:25",
+  "total_matches": 614,
+  "versions": [
+    "7.40"
+  ],
+  "leagues": [
+    {
+      "name": "PGL Wallachia 2026 Season 7",
+      "id": 19435,
+      "category": "PGL",
+      "match_count": 124
+    },
+    {
+      "name": "ESL One Birmingham 2026",
+      "id": 19422,
+      "category": "ESL One",
+      "match_count": 64
+    },
+    {
+      "name": "DreamLeague Division 2 Season 3",
+      "id": 19290,
+      "category": "DreamLeague",
+      "match_count": 89
+    },
+    {
+      "name": "DreamLeague Season 28",
+      "id": 19269,
+      "category": "DreamLeague",
+      "match_count": 195
+    },
+    {
+      "name": "PGL Wallachia Season #7 AMER Closed Qualifiers",
+      "id": 19248,
+      "category": "PGL",
+      "match_count": 32
+    },
+    {
+      "name": "PGL Wallachia Season #7 EEU Closed Qualifiers",
+      "id": 19247,
+      "category": "PGL",
+      "match_count": 37
+    },
+    {
+      "name": "PGL Wallachia Season #7 WEU Closed Qualifiers",
+      "id": 19246,
+      "category": "PGL",
+      "match_count": 34
+    },
+    {
+      "name": "PGL Wallachia Season #7 Asia Closed Qualifiers",
+      "id": 19245,
+      "category": "PGL",
+      "match_count": 39
+    }
+  ],
+  "files": [
+    "7.40/DreamLeague/matches.json",
+    "7.40/ESL_One/matches.json",
+    "7.40/PGL/matches.json"
+  ]
+}

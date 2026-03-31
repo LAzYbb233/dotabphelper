@@ -1,0 +1,27 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+venv/
+*.egg-info/
+
+# Node.js
+web/node_modules/
+web/dist/
+
+# Vite cache
+.vite/
+
+# IDE / Claude
+.claude/
+
+# Large raw data files (regenerate with scripts)
+data/7.40/
+t1_matches_2025.json
+t1_matches_with_patch_progress.json
+pro_matches_2025_progress.json
+history0323/pro_matches_2025_full.json
+
+# OS
+.DS_Store
