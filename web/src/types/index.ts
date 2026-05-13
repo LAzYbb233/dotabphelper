@@ -40,41 +40,49 @@ export interface Team {
 
 // ─── Draft State ─────────────────────────────────────
 
-// Dota2 CM 顺序：24 个动作
-// Ban Ph1: orders 0-5   (A B A B A B)
-// Pick Ph1: orders 6-9  (A B B A)
-// Ban Ph2: orders 10-13 (B A B A)
-// Pick Ph2: orders 14-23 (B A A B A B)
-export const CM_SEQUENCE: Array<{ order: number; action: 'ban' | 'pick'; team: 'ally' | 'enemy' }> = [
-  // Ban Phase 1
-  { order: 0, action: 'ban', team: 'ally' },
-  { order: 1, action: 'ban', team: 'enemy' },
-  { order: 2, action: 'ban', team: 'ally' },
-  { order: 3, action: 'ban', team: 'enemy' },
-  { order: 4, action: 'ban', team: 'ally' },
-  { order: 5, action: 'ban', team: 'enemy' },
-  // Pick Phase 1
-  { order: 6, action: 'pick', team: 'ally' },
-  { order: 7, action: 'pick', team: 'enemy' },
-  { order: 8, action: 'pick', team: 'enemy' },
-  { order: 9, action: 'pick', team: 'ally' },
-  // Ban Phase 2
-  { order: 10, action: 'ban', team: 'enemy' },
-  { order: 11, action: 'ban', team: 'ally' },
-  { order: 12, action: 'ban', team: 'enemy' },
-  { order: 13, action: 'ban', team: 'ally' },
-  // Pick Phase 2
-  { order: 14, action: 'pick', team: 'enemy' },
-  { order: 15, action: 'pick', team: 'ally' },
-  { order: 16, action: 'pick', team: 'ally' },
-  { order: 17, action: 'pick', team: 'enemy' },
-  { order: 18, action: 'pick', team: 'ally' },
-  { order: 19, action: 'pick', team: 'enemy' },
-  // Total: 6 bans + 4 picks + 4 bans + 6 picks = 20 actions
-  // (some CM variants have 24 — we use standard 20-action CM)
-];
+// Dota2 职业赛 CM 顺序（7.40 验证，24 步 = 14ban + 10pick）
+// A = 先ban方, B = 后ban方
+// Phase 1 (0-5):   初始 6 ban  (AA BB A B)
+// Phase 2 (6-9):   交替 ban/pick (B[pick AB] A)
+// Phase 3 (10-17): 主选阶段 (AA B [pick BA ABBA])
+// Phase 4 (18-23): 收尾 4ban + 2pick (ABAB [pick AB])
+export function buildCMSequence(firstBanTeam: 'ally' | 'enemy'): DraftSlot[] {
+  const A = firstBanTeam;
+  const B: 'ally' | 'enemy' = firstBanTeam === 'ally' ? 'enemy' : 'ally';
+  return [
+    // Phase 1: 初始 6 ban (AA BB A B)
+    { order: 0, action: 'ban', team: A },
+    { order: 1, action: 'ban', team: A },
+    { order: 2, action: 'ban', team: B },
+    { order: 3, action: 'ban', team: B },
+    { order: 4, action: 'ban', team: A },
+    { order: 5, action: 'ban', team: B },
+    // Phase 2: 2ban + 2pick 交替 (B pick_A pick_B A)
+    { order: 6, action: 'ban', team: B },
+    { order: 7, action: 'pick', team: A },
+    { order: 8, action: 'pick', team: B },
+    { order: 9, action: 'ban', team: A },
+    // Phase 3: 2ban + 6pick 主选 (AA B pick_BA pick_ABBA)
+    { order: 10, action: 'ban', team: A },
+    { order: 11, action: 'ban', team: B },
+    { order: 12, action: 'pick', team: B },
+    { order: 13, action: 'pick', team: A },
+    { order: 14, action: 'pick', team: A },
+    { order: 15, action: 'pick', team: B },
+    { order: 16, action: 'pick', team: B },
+    { order: 17, action: 'pick', team: A },
+    // Phase 4: 4ban + 2pick 收尾 (ABAB pick_AB)
+    { order: 18, action: 'ban', team: A },
+    { order: 19, action: 'ban', team: B },
+    { order: 20, action: 'ban', team: A },
+    { order: 21, action: 'ban', team: B },
+    { order: 22, action: 'pick', team: A },
+    { order: 23, action: 'pick', team: B },
+    // 合计: 14 ban + 10 pick = 24 步，每队 7 ban + 5 pick
+  ];
+}
 
-export type DraftAction = typeof CM_SEQUENCE[number];
+export type DraftAction = DraftSlot;
 
 export interface DraftSlot {
   order: number;

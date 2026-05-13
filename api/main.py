@@ -55,8 +55,9 @@ class SuggestRequest(BaseModel):
     bans: list[int] = []           # 已 ban 掉的英雄 ID 列表（双方）
     ally_picks: list[int] = []     # 我方已选英雄 ID 列表
     enemy_picks: list[int] = []    # 对方已选英雄 ID 列表
-    phase: int = 1                 # 1=BanPh1, 2=PickPh1, 3=BanPh2, 4=PickPh2
+    phase: int = 1                 # 1=初始ban, 2=交替ban/pick, 3=主选, 4=收尾
     is_ban_phase: bool = True      # 当前是否是 ban 阶段
+    ally_side: str = 'radiant'     # 'radiant' | 'dire'，用于克制矩阵方向修正
 
 
 # ─── 置信度常量 ────────────────────────────────────────
@@ -86,26 +87,40 @@ def compute_ban_suggestions(
     enemy_team_id: Optional[str],
     drafted: set,
     ally_picks: list[int] = None,
+    enemy_picks: list[int] = None,
+    phase: int = 1,
     top_n: int = 8,
 ) -> list:
     """
-    Ban 建议：
-    分数 = 0.5 × enemy_pick_rate + 0.3 × smoothed_win_rate + 0.2 × counter_threat
+    Ban 建议（Phase 感知版）：
+    Phase 1-2（初始ban / 交替ban）：偏重全局热度和对手习惯
+      score = 0.40*enemy_pr + 0.25*ban_rate + 0.20*win_rate + 0.10*counter + 0.05*enemy_syn
+    Phase 3-4（后期ban）：偏重反协同和克制威胁
+      score = 0.25*enemy_pr + 0.15*ban_rate + 0.15*win_rate + 0.20*counter + 0.25*enemy_syn
 
-    - smoothed_win_rate: 贝叶斯平滑后的全局胜率（小样本向 0.5 收缩）
-    - counter_threat: 该英雄克制我方已选英雄的程度（无克制时 = 0，有克制时为正值）
+    - counter_threat: 该英雄克制我方已选英雄的程度
+    - enemy_syn_bonus: 该英雄与对手已选英雄的协同强度（越高越应 ban）
     """
     heroes = _analysis.get("heroes", {})
     teams = _analysis.get("teams", {})
     counter = _analysis.get("counter", {})
+    synergy = _analysis.get("synergy", {})
     ally_picks = ally_picks or []
+    enemy_picks = enemy_picks or []
     ally_str = [str(h) for h in ally_picks]
+    enemy_str = [str(h) for h in enemy_picks]
 
     enemy_picks_map = {}
     if enemy_team_id and enemy_team_id in teams:
         enemy_tm = teams[enemy_team_id]["total_matches"] or 1
         for hid, v in teams[enemy_team_id]["hero_picks"].items():
             enemy_picks_map[hid] = v["count"] / enemy_tm
+
+    # Phase 权重：前期偏热度，后期偏精准反制
+    if phase <= 2:
+        w_enemy_pr, w_ban_rate, w_wr, w_ctr, w_enemy_syn = 0.40, 0.25, 0.20, 0.10, 0.05
+    else:
+        w_enemy_pr, w_ban_rate, w_wr, w_ctr, w_enemy_syn = 0.25, 0.15, 0.15, 0.20, 0.25
 
     results = []
     for hid, hdata in heroes.items():
@@ -117,17 +132,15 @@ def compute_ban_suggestions(
         pw = hdata.get("pick_win", 0)
         smoothed_wr = bayesian_win_rate(pw, pc, 0.5, BAYES_K_HERO)
 
-        # ② 对手 pick 率（已选该队伍则用队伍数据，否则用全局 pick 率）
+        # ② 对手 pick 率
         global_pick_rate = hdata.get("pick_rate", 0)
         global_ban_rate = hdata.get("ban_rate", 0)
         enemy_pr = enemy_picks_map.get(hid, global_pick_rate)
 
-        # ③ 克制威胁：候选英雄克制我方已选英雄的平均程度
-        #    两个方向都检查（该英雄在天辉/夜魇侧时的克制力）
+        # ③ 克制威胁：候选英雄克制我方已选英雄（两个方向都检查）
         counter_bonus = 0.0
         ctr_samples = 0
         for ally_h in ally_str:
-            # 方向 A: hid 在天辉，ally_h 在夜魇
             key_a = f"{hid}:{ally_h}"
             if key_a in counter and counter[key_a]["count"] >= MIN_PAIR_COUNT:
                 threat = bayesian_win_rate(
@@ -137,7 +150,6 @@ def compute_ban_suggestions(
                 if threat > 0:
                     counter_bonus += threat
                     ctr_samples += 1
-            # 方向 B: ally_h 在天辉，hid 在夜魇（ally 胜率低 = hid 克制 ally）
             key_b = f"{ally_h}:{hid}"
             if key_b in counter and counter[key_b]["count"] >= MIN_PAIR_COUNT:
                 threat = 0.5 - bayesian_win_rate(
@@ -150,11 +162,27 @@ def compute_ban_suggestions(
         if ctr_samples:
             counter_bonus /= ctr_samples
 
-        # 版本热门英雄往往 pick_rate 被 ban 率压低，ban_rate 才是真实强度信号
-        score = (0.40 * enemy_pr
-                 + 0.25 * global_ban_rate
-                 + 0.20 * smoothed_wr
-                 + 0.15 * (0.5 + counter_bonus))
+        # ④ 对手协同威胁：候选英雄与对手已选英雄的协同程度（越高越危险）
+        enemy_syn_bonus = 0.0
+        esyn_samples = 0
+        for ene_h in enemy_str:
+            key = ":".join(sorted([hid, ene_h]))
+            if key in synergy and synergy[key]["count"] >= MIN_PAIR_COUNT:
+                threat = bayesian_win_rate(
+                    synergy[key]["wins"], synergy[key]["count"],
+                    0.5, BAYES_K_PAIR
+                ) - 0.5
+                if threat > 0:
+                    enemy_syn_bonus += threat
+                    esyn_samples += 1
+        if esyn_samples:
+            enemy_syn_bonus /= esyn_samples
+
+        score = (w_enemy_pr * enemy_pr
+                 + w_ban_rate * global_ban_rate
+                 + w_wr * smoothed_wr
+                 + w_ctr * (0.5 + counter_bonus)
+                 + w_enemy_syn * (0.5 + enemy_syn_bonus))
 
         results.append({
             "hero_id": int(hid),
@@ -170,6 +198,7 @@ def compute_ban_suggestions(
                 "global_ban_rate": global_ban_rate,
                 "pick_count": pc,
                 "counter_threat": round(counter_bonus, 4),
+                "enemy_synergy_threat": round(enemy_syn_bonus, 4),
             },
         })
 
@@ -183,14 +212,15 @@ def compute_pick_suggestions(
     drafted: set,
     ally_picks: list[int],
     enemy_picks: list[int],
+    phase: int = 1,
     top_n: int = 8,
 ) -> list:
     """
-    Pick 建议：
-    分数 = 0.4 × own_win_rate + 0.3 × synergy_bonus − 0.3 × counter_penalty
-
-    所有胜率均经贝叶斯平滑：小样本结果向 0.5 收缩，避免低场次高胜率虚高。
-    协同/克制最小样本由 2 提高到 MIN_PAIR_COUNT(3)。
+    Pick 建议（Phase 感知版）：
+    Phase 1-2（早期pick）：重视克制惩罚，避免过早暴露针对性
+      score = 0.30*own_wr + 0.25*syn_bonus - 0.25*ctr_penalty + position + presence
+    Phase 3-4（后期pick）：降低克制惩罚权重，更重视协同加成（针对pick场景）
+      score = 0.30*own_wr + 0.30*syn_bonus - 0.15*ctr_penalty + position + presence
     """
     heroes = _analysis.get("heroes", {})
     teams = _analysis.get("teams", {})
@@ -277,9 +307,15 @@ def compute_pick_suggestions(
         presence = min(hdata.get("pick_rate", 0) + hdata.get("ban_rate", 0), 1.0)
         presence_weight = 0.20 - position_weight  # 两者之和固定 0.20，此消彼长
 
+        # 后期 pick 降低克制惩罚（更倾向于主动针对），提高协同权重
+        if phase >= 3:
+            syn_w, ctr_w = 0.30, 0.15
+        else:
+            syn_w, ctr_w = 0.25, 0.25
+
         score = (0.30 * own_wr
-                 + 0.25 * (0.5 + syn_bonus)
-                 - 0.25 * ctr_penalty
+                 + syn_w * (0.5 + syn_bonus)
+                 - ctr_w * ctr_penalty
                  + position_weight * position_fit
                  + presence_weight * presence)
 
@@ -306,11 +342,13 @@ def compute_pick_suggestions(
     return results[:top_n]
 
 
-def predict_win_rate(ally_picks: list[int], enemy_picks: list[int]) -> float:
+def predict_win_rate(ally_picks: list[int], enemy_picks: list[int], ally_side: str = 'radiant') -> float:
     """
-    基于克制矩阵预测胜率（贝叶斯平滑版）
-    遍历所有我方 vs 对方英雄对，平均贝叶斯平滑后的克制胜率。
-    小样本 matchup 向 0.5 收缩，避免极端值主导预测。
+    基于克制矩阵预测胜率（贝叶斯平滑 + 天辉/夜魇方向修正版）
+
+    counter 数据格式：key = "{radiant_hero}:{dire_hero}", hero_a_wins = radiant 一方的胜数
+    - ally_side='radiant': ally 是天辉，key 方向为 ally:enemy，hero_a_wins 即 ally 胜率
+    - ally_side='dire':    ally 是夜魇，key 方向为 enemy:ally，ally 胜率 = 1 - hero_a_wins
     """
     if not ally_picks or not enemy_picks:
         return 0.5
@@ -319,19 +357,27 @@ def predict_win_rate(ally_picks: list[int], enemy_picks: list[int]) -> float:
     scores = []
     for a in ally_picks:
         for e in enemy_picks:
-            key = f"{a}:{e}"
-            if key in counter and counter[key]["count"] >= MIN_PAIR_COUNT:
-                smoothed = bayesian_win_rate(
-                    counter[key]["hero_a_wins"], counter[key]["count"], 0.5, BAYES_K_PAIR
-                )
-                scores.append(smoothed)
+            if ally_side == 'radiant':
+                # ally=radiant → key: ally_hero:enemy_hero, hero_a_wins = ally wins
+                key_primary = f"{a}:{e}"
+                key_fallback = f"{e}:{a}"
+                flip = False
             else:
-                key2 = f"{e}:{a}"
-                if key2 in counter and counter[key2]["count"] >= MIN_PAIR_COUNT:
-                    smoothed = bayesian_win_rate(
-                        counter[key2]["hero_a_wins"], counter[key2]["count"], 0.5, BAYES_K_PAIR
-                    )
-                    scores.append(1 - smoothed)
+                # ally=dire → key: enemy_hero:ally_hero, ally wins = 1 - hero_a_wins
+                key_primary = f"{e}:{a}"
+                key_fallback = f"{a}:{e}"
+                flip = True
+
+            if key_primary in counter and counter[key_primary]["count"] >= MIN_PAIR_COUNT:
+                smoothed = bayesian_win_rate(
+                    counter[key_primary]["hero_a_wins"], counter[key_primary]["count"], 0.5, BAYES_K_PAIR
+                )
+                scores.append(1 - smoothed if flip else smoothed)
+            elif key_fallback in counter and counter[key_fallback]["count"] >= MIN_PAIR_COUNT:
+                smoothed = bayesian_win_rate(
+                    counter[key_fallback]["hero_a_wins"], counter[key_fallback]["count"], 0.5, BAYES_K_PAIR
+                )
+                scores.append(smoothed if flip else 1 - smoothed)
 
     return round(sum(scores) / len(scores), 4) if scores else 0.5
 
@@ -376,16 +422,17 @@ def suggest(req: SuggestRequest):
 
     if req.is_ban_phase:
         ban_suggestions = compute_ban_suggestions(
-            req.ally_team_id, req.enemy_team_id, drafted, req.ally_picks
+            req.ally_team_id, req.enemy_team_id, drafted,
+            req.ally_picks, req.enemy_picks, req.phase
         )
     else:
         pick_suggestions = compute_pick_suggestions(
             req.ally_team_id, req.enemy_team_id, drafted,
-            req.ally_picks, req.enemy_picks
+            req.ally_picks, req.enemy_picks, req.phase
         )
 
-    # 无论阶段，都计算当前预测胜率
-    win_rate = predict_win_rate(req.ally_picks, req.enemy_picks)
+    # 无论阶段，都计算当前预测胜率（使用 ally_side 修正克制方向）
+    win_rate = predict_win_rate(req.ally_picks, req.enemy_picks, req.ally_side)
 
     return {
         "ban_suggestions": ban_suggestions,
@@ -402,9 +449,9 @@ def suggest_all(
 ):
     """获取全局 ban/pick 建议（无当前草稿状态）"""
     return {
-        "ban_suggestions": compute_ban_suggestions(ally_team_id, enemy_team_id, set(), []),
+        "ban_suggestions": compute_ban_suggestions(ally_team_id, enemy_team_id, set(), [], [], 1),
         "pick_suggestions": compute_pick_suggestions(
-            ally_team_id, enemy_team_id, set(), [], []
+            ally_team_id, enemy_team_id, set(), [], [], 1
         ),
         "win_rate": 0.5,
     }

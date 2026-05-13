@@ -14,6 +14,8 @@ export function BPBoard() {
     assignHero, undoLast, resetDraft,
     activeSlot, isComplete, currentOrder,
     apiError,
+    firstBanSide, setFirstBanSide,
+    allySide, setAllySide,
   } = useBPStore();
 
   // Load data on mount
@@ -45,7 +47,7 @@ export function BPBoard() {
 
   const phase = useBPStore((s) => s.currentPhase());
   const slot = activeSlot();
-  const phaseNames = ['', 'Ban 阶段 1', 'Pick 阶段 1', 'Ban 阶段 2', 'Pick 阶段 2'];
+  const phaseNames = ['', '初始 Ban (1-6)', 'Ban/Pick 交替 (7-10)', '主选阶段 (11-18)', '收尾 Ban+Pick (19-24)'];
 
   return (
     <div style={styles.root}>
@@ -66,6 +68,32 @@ export function BPBoard() {
           )}
         </div>
         <div style={styles.controls}>
+          {/* 先ban方选择 */}
+          <div style={styles.btnGroup}>
+            <button
+              style={{ ...styles.btn, ...(firstBanSide === 'ally' ? styles.btnActive : {}) }}
+              onClick={() => setFirstBanSide('ally')}
+              title="我方先Ban"
+            >我方先Ban</button>
+            <button
+              style={{ ...styles.btn, ...(firstBanSide === 'enemy' ? styles.btnActive : {}) }}
+              onClick={() => setFirstBanSide('enemy')}
+              title="对方先Ban"
+            >对方先Ban</button>
+          </div>
+          {/* 天辉/夜魇 */}
+          <div style={styles.btnGroup}>
+            <button
+              style={{ ...styles.btn, ...(allySide === 'radiant' ? styles.btnRadiant : {}) }}
+              onClick={() => setAllySide('radiant')}
+              title="我方是天辉"
+            >☀ 天辉</button>
+            <button
+              style={{ ...styles.btn, ...(allySide === 'dire' ? styles.btnDire : {}) }}
+              onClick={() => setAllySide('dire')}
+              title="我方是夜魇"
+            >☽ 夜魇</button>
+          </div>
           <button style={styles.btn} onClick={undoLast} title="撤销上一步">↩ 撤销</button>
           <button style={{ ...styles.btn, ...styles.btnDanger }} onClick={resetDraft} title="重置草稿">↺ 重置</button>
         </div>
@@ -176,6 +204,28 @@ const styles: Record<string, React.CSSProperties> = {
   controls: {
     display: 'flex',
     gap: 6,
+    alignItems: 'center',
+  },
+  btnGroup: {
+    display: 'flex',
+    gap: 0,
+    borderRadius: 4,
+    overflow: 'hidden',
+  },
+  btnActive: {
+    background: '#1e40af',
+    border: '1px solid #3b82f6',
+    color: '#e0f2fe',
+  },
+  btnRadiant: {
+    background: '#78350f',
+    border: '1px solid #d97706',
+    color: '#fde68a',
+  },
+  btnDire: {
+    background: '#3b0764',
+    border: '1px solid #7c3aed',
+    color: '#ddd6fe',
   },
   btn: {
     background: '#1e293b',

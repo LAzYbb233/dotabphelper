@@ -13,6 +13,7 @@ export interface SuggestPayload {
   enemy_picks: number[];
   phase: number;
   is_ban_phase: boolean;
+  ally_side?: string;  // 'radiant' | 'dire'，用于克制矩阵方向修正
 }
 
 export async function fetchHeroes(): Promise<Record<string, Hero>> {

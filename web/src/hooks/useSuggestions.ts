@@ -9,16 +9,17 @@ const DEBOUNCE_MS = 400;
  */
 export function useSuggestions() {
   const {
-    allyTeamId, enemyTeamId,
+    allyTeamId, enemyTeamId, allySide,
     allyPickIds, enemyPickIds, banIds,
     currentPhase, activeSlot,
     setSuggestions, setSuggestionLoading,
-    heroesLoaded, isComplete,
+    heroesLoaded,
   } = useBPStore();
 
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const currentOrder = useBPStore((s) => s.currentOrder);
+  const firstBanSide = useBPStore((s) => s.firstBanSide);
 
   useEffect(() => {
     if (!heroesLoaded) return;
@@ -40,10 +41,10 @@ export function useSuggestions() {
           enemy_picks: enemyPickIds(),
           phase,
           is_ban_phase: isBanPhase ?? true,
+          ally_side: allySide,
         });
         setSuggestions(res);
       } catch {
-        // silently ignore network errors during BP
         setSuggestions(null);
       } finally {
         setSuggestionLoading(false);
@@ -53,5 +54,5 @@ export function useSuggestions() {
     return () => {
       if (timerRef.current) clearTimeout(timerRef.current);
     };
-  }, [currentOrder, allyTeamId, enemyTeamId, heroesLoaded]);
+  }, [currentOrder, allyTeamId, enemyTeamId, heroesLoaded, firstBanSide, allySide]);
 }

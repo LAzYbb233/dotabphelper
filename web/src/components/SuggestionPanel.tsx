@@ -8,19 +8,20 @@ interface Props {
 }
 
 export function SuggestionPanel({ onHeroClick }: Props) {
-  const { suggestions, suggestionLoading, activeSlot, currentPhase } = useBPStore();
+  const { suggestions, suggestionLoading, activeSlot, currentPhase, allyPicks, enemyPicks } = useBPStore();
   const slot = activeSlot();
   const phase = currentPhase();
 
   const phaseLabels: Record<number, string> = {
-    1: 'Ban 阶段 1 (1-6)',
-    2: 'Pick 阶段 1 (7-10)',
-    3: 'Ban 阶段 2 (11-14)',
-    4: 'Pick 阶段 2 (15-20)',
+    1: '初始 Ban (1-6步)',
+    2: 'Ban/Pick 交替 (7-10步)',
+    3: '主选阶段 (11-18步)',
+    4: '收尾 Ban+Pick (19-24步)',
   };
 
   const isBan = slot?.action === 'ban';
   const winRate = suggestions?.win_rate ?? 0.5;
+  const hasWinRateData = allyPicks().length >= 2 && enemyPicks().length >= 2;
 
   const banSuggestions = suggestions?.ban_suggestions ?? [];
   const pickSuggestions = suggestions?.pick_suggestions ?? [];
@@ -32,7 +33,7 @@ export function SuggestionPanel({ onHeroClick }: Props) {
         <span style={styles.phaseLabel}>
           {phaseLabels[phase]} · {slot ? (slot.team === 'ally' ? '我方' : '对方') + (isBan ? ' BAN' : ' PICK') : '草稿完成'}
         </span>
-        <WinRateMeter winRate={winRate} loading={suggestionLoading} />
+        <WinRateMeter winRate={winRate} loading={suggestionLoading} hasData={hasWinRateData} />
       </div>
 
       <div style={styles.columns}>

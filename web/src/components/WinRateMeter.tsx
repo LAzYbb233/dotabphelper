@@ -1,9 +1,10 @@
 interface Props {
-  winRate: number;  // 0-1, ally win rate
+  winRate: number;   // 0-1, ally win rate
   loading?: boolean;
+  hasData?: boolean; // false = picks 数量不足，显示占位而非实际数值
 }
 
-export function WinRateMeter({ winRate, loading }: Props) {
+export function WinRateMeter({ winRate, loading, hasData = true }: Props) {
   const pct = Math.round(winRate * 100);
   const barWidth = `${pct}%`;
 
@@ -16,6 +17,26 @@ export function WinRateMeter({ winRate, loading }: Props) {
     : winRate <= 0.45
     ? '#fca5a5'
     : '#facc15';
+
+  if (!hasData) {
+    return (
+      <div style={styles.container}>
+        <div style={styles.labels}>
+          <span style={{ color: '#60a5fa', fontWeight: 700 }}>我方</span>
+          <span style={{ color: '#475569', fontSize: 12 }}>各选≥2英雄后显示预测胜率</span>
+          <span style={{ color: '#f87171', fontWeight: 700 }}>对方</span>
+        </div>
+        <div style={styles.track}>
+          <div style={{ ...styles.fill, width: '50%', background: '#334155' }} />
+          <div style={styles.center} />
+        </div>
+        <div style={styles.pcts}>
+          <span style={{ color: '#475569', fontWeight: 700 }}>--</span>
+          <span style={{ color: '#475569', fontWeight: 700 }}>--</span>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div style={styles.container}>

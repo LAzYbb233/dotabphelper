@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { CM_SEQUENCE } from '../types';
+import { buildCMSequence } from '../types';
 import type { Hero, Team, DraftSlot, SuggestResponse } from '../types';
 
 export interface BPStore {
@@ -13,8 +13,10 @@ export interface BPStore {
   // ─── Draft State ─────────────────────────
   allyTeamId: string | null;
   enemyTeamId: string | null;
-  slots: DraftSlot[];       // 20 slots in CM order
-  currentOrder: number;     // 0-19, which slot is active
+  firstBanSide: 'ally' | 'enemy';   // 谁先ban
+  allySide: 'radiant' | 'dire';     // 我方天辉/夜魇（用于克制矩阵方向修正）
+  slots: DraftSlot[];       // 24 slots in CM order
+  currentOrder: number;     // 0-23, which slot is active
   isComplete: boolean;
 
   // ─── Suggestions ─────────────────────────
@@ -27,6 +29,8 @@ export interface BPStore {
   setApiError: (err: string | null) => void;
   setAllyTeam: (teamId: string | null) => void;
   setEnemyTeam: (teamId: string | null) => void;
+  setFirstBanSide: (side: 'ally' | 'enemy') => void;
+  setAllySide: (side: 'radiant' | 'dire') => void;
   assignHero: (hero: Hero) => void;   // assign to current active slot
   undoLast: () => void;
   resetDraft: () => void;
@@ -47,8 +51,10 @@ export interface BPStore {
   isAllyTurn: () => boolean;
 }
 
-const initialSlots = (): DraftSlot[] =>
-  CM_SEQUENCE.map((s) => ({ ...s }));
+const TOTAL_SLOTS = 24;
+
+const initialSlots = (firstBanSide: 'ally' | 'enemy' = 'ally'): DraftSlot[] =>
+  buildCMSequence(firstBanSide).map((s) => ({ ...s }));
 
 export const useBPStore = create<BPStore>((set, get) => ({
   heroes: {},
@@ -59,7 +65,9 @@ export const useBPStore = create<BPStore>((set, get) => ({
 
   allyTeamId: null,
   enemyTeamId: null,
-  slots: initialSlots(),
+  firstBanSide: 'ally',
+  allySide: 'radiant',
+  slots: initialSlots('ally'),
   currentOrder: 0,
   isComplete: false,
 
@@ -72,9 +80,19 @@ export const useBPStore = create<BPStore>((set, get) => ({
   setAllyTeam: (allyTeamId) => set({ allyTeamId }),
   setEnemyTeam: (enemyTeamId) => set({ enemyTeamId }),
 
+  setFirstBanSide: (side) => set({
+    firstBanSide: side,
+    slots: initialSlots(side),
+    currentOrder: 0,
+    isComplete: false,
+    suggestions: null,
+  }),
+
+  setAllySide: (allySide) => set({ allySide }),
+
   assignHero: (hero) => {
     const { slots, currentOrder, isComplete } = get();
-    if (isComplete || currentOrder >= CM_SEQUENCE.length) return;
+    if (isComplete || currentOrder >= TOTAL_SLOTS) return;
     const newSlots = slots.map((s) =>
       s.order === currentOrder ? { ...s, hero } : s
     );
@@ -82,7 +100,7 @@ export const useBPStore = create<BPStore>((set, get) => ({
     set({
       slots: newSlots,
       currentOrder: nextOrder,
-      isComplete: nextOrder >= CM_SEQUENCE.length,
+      isComplete: nextOrder >= TOTAL_SLOTS,
     });
   },
 
@@ -97,8 +115,9 @@ export const useBPStore = create<BPStore>((set, get) => ({
   },
 
   resetDraft: () => {
+    const { firstBanSide } = get();
     set({
-      slots: initialSlots(),
+      slots: initialSlots(firstBanSide),
       currentOrder: 0,
       isComplete: false,
       suggestions: null,
@@ -156,10 +175,10 @@ export const useBPStore = create<BPStore>((set, get) => ({
 
   currentPhase: () => {
     const order = get().currentOrder;
-    if (order <= 5) return 1;
-    if (order <= 9) return 2;
-    if (order <= 13) return 3;
-    return 4;
+    if (order <= 5) return 1;   // Phase 1: 初始 6 ban
+    if (order <= 9) return 2;   // Phase 2: 2ban+2pick 交替
+    if (order <= 17) return 3;  // Phase 3: 主选阶段（2ban+6pick）
+    return 4;                   // Phase 4: 收尾 4ban+2pick
   },
 
   isAllyTurn: () => {

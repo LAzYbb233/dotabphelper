@@ -118,26 +118,27 @@ def parse_hero_map_md() -> dict:
 
 
 # ─────────────────────────────────────────────
-# BP 顺序：Captains Mode
-# order 0-23:
-#   Ban Ph1:  0-5  (A B A B A B)
-#   Pick Ph1: 6-9  (A B B A)
-#   Ban Ph2:  10-13 (B A B A)
-#   Pick Ph2: 14-23 (B A A B A B... )
+# BP 顺序：Captains Mode（职业赛 7.40 实际格式，24步）
+# A = 先ban方, B = 后ban方
+# Phase 1 (0-5):   初始 6 ban  (AA BB A B)
+# Phase 2 (6-9):   2ban+2pick 交替 (B pick_A pick_B A)
+# Phase 3 (10-17): 2ban+6pick 主选 (AA B pick_BA pick_ABBA)
+# Phase 4 (18-23): 4ban+2pick 收尾 (ABAB pick_AB)
 # team 0 = radiant, 1 = dire
-# "A" here means first-ban team (determined per match by picks_bans[0].team)
 # ─────────────────────────────────────────────
 
-def get_draft_phase(order: int) -> int:
-    """返回所在阶段 1=Ban1, 2=Pick1, 3=Ban2, 4=Pick2"""
+def get_draft_phase(order: int, is_pick: bool = False) -> int:
+    """返回所在阶段（基于 order 区间划分真实 CM 格式）
+    1=初始ban(0-5), 2=交替ban/pick(6-9), 3=主选(10-17), 4=收尾(18-23)
+    """
     if order <= 5:
-        return 1  # Ban phase 1
+        return 1
     elif order <= 9:
-        return 2  # Pick phase 1
-    elif order <= 13:
-        return 3  # Ban phase 2
+        return 2
+    elif order <= 17:
+        return 3
     else:
-        return 4  # Pick phase 2
+        return 4
 
 
 # ─────────────────────────────────────────────
@@ -214,7 +215,7 @@ def analyze(matches: list, hero_meta: dict) -> dict:
             team = pb.get("team", 0)   # 0=radiant, 1=dire
             is_pick = pb.get("is_pick", False)
             order = pb.get("order", 0)
-            phase = get_draft_phase(order)
+            phase = get_draft_phase(order, is_pick)
 
             if is_pick:
                 hero_stats[hero_id]["pick_count"] += 1
