@@ -63,7 +63,7 @@ export function BPBoard() {
             <span style={styles.completeBadge}>✓ 草稿完成</span>
           ) : (
             <span style={styles.phaseBadge}>
-              {slot && `${phaseNames[phase]} · 第 ${currentOrder + 1}/20 步`}
+              {slot && `${phaseNames[phase]} · 第 ${currentOrder + 1}/24 步`}
             </span>
           )}
         </div>

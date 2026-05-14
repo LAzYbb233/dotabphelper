@@ -48,14 +48,16 @@ npm run dev
 - **右侧**：对方队伍
 - **底部**：实时建议（每次 ban/pick 后自动更新）+ 胜率预测
 
-### BP 顺序（标准 CM 模式，20 步）
+### BP 顺序（职业赛 7.40 CM 模式，24 步）
 
 ```
-Ban 阶段 1：A B A B A B（6 ban）
-Pick 阶段 1：A B B A（4 pick）
-Ban 阶段 2：B A B A（4 ban）
-Pick 阶段 2：B A A B A B（6 pick）
+Phase 1：AA BB A B（初始 6 ban）
+Phase 2：B ban · A pick · B pick · A ban
+Phase 3：A ban · B ban · B pick · A pick · A pick · B pick · B pick · A pick
+Phase 4：A ban · B ban · A ban · B ban · A pick · B pick
 ```
+
+A = 先 ban 方，B = 后 ban 方。合计 14 ban + 10 pick，每队 7 ban + 5 pick。
 
 ### 建议算法
 
